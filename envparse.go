@@ -19,6 +19,7 @@ package envparse
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"unicode/utf16"
@@ -59,6 +60,8 @@ func parseError(line int, err error) error {
 
 // Parse environment variables from an io.Reader into a map or return a
 // ParseError.
+//
+// Parses with strict mode, ensuring file lines contain only key-value pairs.
 func Parse(r io.Reader) (map[string]string, error) {
 	env := make(map[string]string)
 	scanner := bufio.NewScanner(r)
@@ -71,6 +74,38 @@ func Parse(r io.Reader) (map[string]string, error) {
 		i++
 		k, v, err := parseLine(scanner.Bytes())
 		if err != nil {
+			return nil, parseError(i, err)
+		}
+
+		// Skip blank lines
+		if len(k) > 0 {
+			env[string(k)] = string(v)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, parseError(i, err)
+	}
+	return env, nil
+}
+
+// ParsePermissive parses environment variables from an io.Reader into a map or returns a
+// ParseError.
+//
+// Parses with permissive mode, skipping file lines that don't contains key-value pairs.
+func ParsePermissive(r io.Reader) (map[string]string, error) {
+	env := make(map[string]string)
+	scanner := bufio.NewScanner(r)
+
+	// Track line number
+	i := 0
+
+	// Main scan loop
+	for scanner.Scan() {
+		i++
+		k, v, err := parseLine(scanner.Bytes())
+		if err != nil && errors.Is(err, ErrMissingSeparator) {
+			continue
+		} else if err != nil {
 			return nil, parseError(i, err)
 		}
 
